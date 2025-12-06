@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Live Camera IMEI Matcher</title>
+<title>Live IMEI Scanner</title>
 <style>
 body{margin:0;font-family:Arial,sans-serif;padding:10px;text-align:center}
 input, button{width:100%;padding:12px;margin:5px 0;font-size:16px}
@@ -18,6 +18,7 @@ input, button{width:100%;padding:12px;margin:5px 0;font-size:16px}
 <div id="camera-container"></div>
 <canvas id="overlay"></canvas>
 
+
 <script src="https://cdnjs.cloudflare.com/ajax/libs/quagga/0.12.1/quagga.min.js"></script>
 <script>
 const targetEl = document.getElementById('target');
@@ -27,43 +28,73 @@ const overlay = document.getElementById('overlay');
 const statusEl = document.getElementById('status');
 const overlayCtx = overlay.getContext('2d');
 
+
 startBtn.addEventListener('click',()=>{
-  const target = targetEl.value.trim();
-  if(!target){statusEl.textContent='Enter target IMEI'; return;}
+const target = targetEl.value.trim();
+if(!target){statusEl.textContent='Enter target IMEI'; return;}
 
-  Quagga.init({
-    inputStream:{name:'Live',type:'LiveStream',target:cameraContainer,constraints:{facingMode:'environment'}},
-    decoder:{readers:['code_128_reader','ean_reader','ean_8_reader','upc_reader','upc_e_reader','code_39_reader']},
-    locate:true
-  },err=>{
-    if(err){statusEl.textContent='Camera error: '+err; return;}
-    Quagga.start();
-    statusEl.textContent='Scanning...';
-    const video = cameraContainer.querySelector('video');
-    video.addEventListener('loadedmetadata',()=>{
-      overlay.width=video.videoWidth;
-      overlay.height=video.videoHeight;
-    });
-  });
 
-  Quagga.onProcessed(result=>{overlayCtx.clearRect(0,0,overlay.width,overlay.height);});
+Quagga.init({
+inputStream:{
+type:'LiveStream',
+target:cameraContainer,
+constraints:{facingMode:'environment'},
+area:{top:'0%', right:'0%', left:'0%', bottom:'0%'}
+},
+locator:{patchSize:'medium',halfSample:false},
+numOfWorkers: navigator.hardwareConcurrency || 4,
+decoder:{readers:['code_128_reader']}, // most IMEIs are code128
+locate:true
+}, err=>{
+if(err){statusEl.textContent='Camera init error: '+err; return;}
+Quagga.start();
+statusEl.textContent='Scanning...';
 
-  Quagga.onDetected(data=>{
-    const code=data.codeResult.code;
-    if(code===target){
-      const box=data.box;
-      overlayCtx.clearRect(0,0,overlay.width,overlay.height);
-      overlayCtx.strokeStyle='green';
-      overlayCtx.lineWidth=4;
-      overlayCtx.beginPath();
-      overlayCtx.moveTo(box[0][0],box[0][1]);
-      box.forEach(p=>overlayCtx.lineTo(p[0],p[1]));
-      overlayCtx.closePath();
-      overlayCtx.stroke();
-      statusEl.textContent='MATCHED: '+code;
-      // Optional beep: new Audio('https://actions.google.com/sounds/v1/cartoon/clang_and_wobble.ogg').play();
-    }
-  });
+
+const video = cameraContainer.querySelector('video');
+video.addEventListener('loadedmetadata',()=>{
+overlay.width=video.videoWidth;
+overlay.height=video.videoHeight;
+});
+});
+
+
+Quagga.onProcessed(result=>{
+overlayCtx.clearRect(0,0,overlay.width,overlay.height);
+if(result && result.boxes){
+result.boxes.filter(box => box!==result.box).forEach(box=>{
+overlayCtx.strokeStyle='rgba(255,0,0,0.3)';
+overlayCtx.lineWidth=2;
+overlayCtx.beginPath();
+overlayCtx.moveTo(box[0][0],box[0][1]);
+box.forEach(p=>overlayCtx.lineTo(p[0],p[1]));
+overlayCtx.closePath();
+overlayCtx.stroke();
+});
+}
+});
+
+
+Quagga.onDetected(data=>{
+const code=data.codeResult.code;
+const box=data.box;
+overlayCtx.clearRect(0,0,overlay.width,overlay.height);
+overlayCtx.strokeStyle=(code===target)?'green':'yellow';
+overlayCtx.lineWidth=4;
+overlayCtx.beginPath();
+overlayCtx.moveTo(box[0][0],box[0][1]);
+box.forEach(p=>overlayCtx.lineTo(p[0],p[1]));
+overlayCtx.closePath();
+overlayCtx.stroke();
+
+
+if(code===target){
+statusEl.textContent='MATCHED: '+code;
+// optional beep: new Audio('https://actions.google.com/sounds/v1/cartoon/clang_and_wobble.ogg').play();
+} else {
+statusEl.textContent='Detected: '+code;
+}
+});
 });
 </script>
 </body>
